@@ -1,0 +1,36 @@
+{
+  "name": "simple-justwatch-js",
+  "version": "1.0.0",
+  "description": "Unofficial JavaScript and TypeScript client for the public JustWatch GraphQL API.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anthonyfranc/simple-justwatch-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anthonyfranc/simple-justwatch-js/issues"
+  },
+  "homepage": "https://github.com/anthonyfranc/simple-justwatch-js#readme",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node -e \"const { SimpleJustWatch } = require('./'); const client = new SimpleJustWatch({ fetch: async () => ({ json: async () => ({ data: { providers: [] } }) }) }); if (!client || typeof client.search !== 'function') process.exit(1);\""
+  },
+  "keywords": [
+    "justwatch",
+    "streaming",
+    "graphql",
+    "movies",
+    "tv"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

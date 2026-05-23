@@ -1,0 +1,4 @@
+.npm-cache/
+.npmrc
+node_modules/
+*.tgz
