@@ -44,6 +44,327 @@ async function ensureFetch() {
   }
 }
 
+const IMAGES_URL = 'https://images.justwatch.com';
+const DETAILS_URL = 'https://justwatch.com';
+
+const PACKAGE_FRAGMENT = `
+fragment PackageDetails on Package {
+  id
+  packageId
+  clearName
+  technicalName
+  shortName
+  slug
+  monetizationTypes
+  icon(profile: S100, format: $formatOfferIcon)
+}`;
+
+const OFFER_FRAGMENT = `
+fragment TitleOffer on Offer {
+  id
+  monetizationType
+  presentationType
+  retailPrice(language: $language)
+  retailPriceValue
+  currency
+  lastChangeRetailPriceValue
+  type
+  standardWebURL
+  elementCount
+  availableTo
+  subtitleLanguages
+  videoTechnology
+  audioTechnology
+  audioLanguages
+  package {
+    ...PackageDetails
+  }
+}`;
+
+const TITLE_DETAILS_FRAGMENT = `
+fragment TitleDetails on MovieOrShowOrSeasonOrEpisode {
+  id
+  objectId
+  objectType
+  content(country: $country, language: $language) {
+    title
+    originalReleaseYear
+    originalReleaseDate
+    runtime
+    shortDescription
+    ... on MovieOrShowContent {
+      fullPath
+      ageCertification
+      posterUrl(profile: $profile, format: $formatPoster)
+      backdrops(profile: $backdropProfile, format: $formatPoster) {
+        backdropUrl
+      }
+      genres {
+        shortName
+        technicalName
+      }
+      externalIds {
+        imdbId
+        tmdbId
+      }
+      scoring {
+        imdbScore
+        imdbVotes
+        tmdbPopularity
+        tmdbScore
+        tomatoMeter
+        certifiedFresh
+        jwRating
+      }
+    }
+    ... on SeasonContent {
+      seasonNumber
+    }
+    ... on EpisodeContent {
+      seasonNumber
+      episodeNumber
+    }
+  }
+  offers(country: $country, platform: WEB, filter: $filter) {
+    ...TitleOffer
+  }
+}`;
+
+const SEARCH_QUERY = `
+query GetSearchTitles(
+  $searchTitlesFilter: TitleFilter!,
+  $country: Country!,
+  $language: Language!,
+  $first: Int!,
+  $formatPoster: ImageFormat,
+  $formatOfferIcon: ImageFormat,
+  $profile: PosterProfile,
+  $backdropProfile: BackdropProfile,
+  $filter: OfferFilter!,
+  $offset: Int = 0
+) {
+  popularTitles(
+    country: $country,
+    filter: $searchTitlesFilter,
+    first: $first,
+    sortBy: POPULAR,
+    sortRandomSeed: 0,
+    offset: $offset
+  ) {
+    edges {
+      cursor
+      node {
+        ...TitleDetails
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+${TITLE_DETAILS_FRAGMENT}
+${OFFER_FRAGMENT}
+${PACKAGE_FRAGMENT}`;
+
+const POPULAR_QUERY = `
+query GetPopularTitles(
+  $popularTitlesFilter: TitleFilter,
+  $country: Country!,
+  $language: Language!,
+  $first: Int!,
+  $sortBy: PopularTitlesSorting!,
+  $formatPoster: ImageFormat,
+  $formatOfferIcon: ImageFormat,
+  $profile: PosterProfile,
+  $backdropProfile: BackdropProfile,
+  $filter: OfferFilter!,
+  $offset: Int = 0
+) {
+  popularTitles(
+    country: $country,
+    filter: $popularTitlesFilter,
+    first: $first,
+    sortBy: $sortBy,
+    sortRandomSeed: 0,
+    offset: $offset
+  ) {
+    edges {
+      cursor
+      node {
+        ...TitleDetails
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+${TITLE_DETAILS_FRAGMENT}
+${OFFER_FRAGMENT}
+${PACKAGE_FRAGMENT}`;
+
+const DETAILS_QUERY = `
+query GetTitleNode(
+  $nodeId: ID!,
+  $country: Country!,
+  $language: Language!,
+  $formatPoster: ImageFormat,
+  $formatOfferIcon: ImageFormat,
+  $profile: PosterProfile,
+  $backdropProfile: BackdropProfile,
+  $filter: OfferFilter!
+) {
+  node(id: $nodeId) {
+    ...TitleDetails
+    ... on Show {
+      totalSeasonCount
+      seasons(sortDirection: ASC) {
+        ...TitleDetails
+      }
+    }
+    ... on Season {
+      totalEpisodeCount
+      episodes(sortDirection: ASC) {
+        ...TitleDetails
+      }
+    }
+  }
+}
+${TITLE_DETAILS_FRAGMENT}
+${OFFER_FRAGMENT}
+${PACKAGE_FRAGMENT}`;
+
+const PROVIDERS_QUERY = `
+query GetProviders($country: Country!, $formatOfferIcon: ImageFormat) {
+  packages(country: $country, platform: WEB, includeAddons: true) {
+    ...PackageDetails
+  }
+}
+${PACKAGE_FRAGMENT}`;
+
+function commonVariables(country, language, bestOnly) {
+  return {
+    country: String(country).toUpperCase(),
+    language,
+    formatPoster: 'JPG',
+    formatOfferIcon: 'PNG',
+    profile: 'S718',
+    backdropProfile: 'S1920',
+    filter: { bestOnly }
+  };
+}
+
+function titleFilter({ title, providers, packages, minReleaseYear, maxReleaseYear, objectTypes }) {
+  const selectedPackages = providers || packages;
+  return {
+    searchQuery: title,
+    packages: selectedPackages,
+    includeTitlesWithoutUrl: true,
+    objectTypes,
+    releaseYear: {
+      min: minReleaseYear,
+      max: maxReleaseYear
+    }
+  };
+}
+
+function cursorToOffset(cursor) {
+  if (cursor == null || cursor === '') return null;
+  if (typeof cursor === 'number') return cursor;
+  const numeric = Number(cursor);
+  if (Number.isInteger(numeric)) return numeric;
+  try {
+    const decoded = typeof Buffer !== 'undefined'
+      ? Buffer.from(String(cursor), 'base64').toString('utf8')
+      : atob(String(cursor));
+    const decodedNumeric = Number(decoded);
+    return Number.isInteger(decodedNumeric) ? decodedNumeric : null;
+  } catch (ex) {
+    return null;
+  }
+}
+
+function imageUrl(path) {
+  if (!path || /^https?:\/\//.test(path)) return path || null;
+  return `${IMAGES_URL}${path}`;
+}
+
+function detailsUrl(path) {
+  if (!path || /^https?:\/\//.test(path)) return path || null;
+  return `${DETAILS_URL}${path}`;
+}
+
+function normalizePackage(pkg) {
+  if (!pkg) return undefined;
+  return {
+    ...pkg,
+    iconUrl: imageUrl(pkg.icon)
+  };
+}
+
+function normalizeOffer(offer) {
+  if (!offer) return offer;
+  const provider = normalizePackage(offer.package);
+  return {
+    ...offer,
+    provider,
+    package: provider
+  };
+}
+
+function edgeConnection(items) {
+  return {
+    edges: (items || []).map(node => ({ node: normalizeTitle(node) }))
+  };
+}
+
+function normalizeTitle(node) {
+  if (!node) return node;
+  const content = node.content || {};
+  const offers = (node.offers || []).map(normalizeOffer);
+  return {
+    ...node,
+    title: content.title,
+    fullPath: content.fullPath,
+    url: detailsUrl(content.fullPath),
+    originalReleaseYear: content.originalReleaseYear,
+    originalReleaseDate: content.originalReleaseDate,
+    runtime: content.runtime,
+    shortDescription: content.shortDescription,
+    ageCertification: content.ageCertification,
+    posterUrl: content.posterUrl,
+    posterFullUrl: imageUrl(content.posterUrl),
+    backdrops: (content.backdrops || []).map(backdrop => ({
+      ...backdrop,
+      backdropFullUrl: imageUrl(backdrop && backdrop.backdropUrl)
+    })),
+    genres: {
+      edges: (content.genres || []).map(genre => ({ node: genre }))
+    },
+    externalIds: content.externalIds,
+    scoring: content.scoring,
+    offers: {
+      edges: offers.map(offer => ({ node: offer }))
+    },
+    seasons: edgeConnection(node.seasons),
+    episodes: edgeConnection(node.episodes),
+    seasonNumber: content.seasonNumber,
+    episodeNumber: content.episodeNumber
+  };
+}
+
+function normalizeConnection(connection) {
+  return {
+    ...connection,
+    edges: ((connection && connection.edges) || []).map(edge => ({
+      ...edge,
+      node: normalizeTitle(edge.node)
+    }))
+  };
+}
+
 class SimpleJustWatch {
   /**
    * Create a new client instance.
@@ -132,88 +453,27 @@ class SimpleJustWatch {
       raw = false
     } = options;
     const variables = {
-      searchTitleString: title,
+      searchTitlesFilter: titleFilter({
+        title,
+        providers,
+        packages: availableToPackages,
+        minReleaseYear,
+        maxReleaseYear,
+        objectTypes
+      }),
       first: count,
-      after: cursor,
-      country,
-      language,
-      objectTypes,
-      providers,
-      minReleaseYear,
-      maxReleaseYear,
-      availableToPackages,
-      excludePackages
+      offset: cursorToOffset(cursor),
+      ...commonVariables(country, language, true)
     };
-    const query = `query GetSearchTitles(
-      $searchTitleString: String!,
-      $first: Int,
-      $after: String,
-      $country: Country!,
-      $language: Language,
-      $objectTypes: [ObjectTypeEnum!],
-      $providers: [StreamingProvider!],
-      $minReleaseYear: Int,
-      $maxReleaseYear: Int,
-      $availableToPackages: [String!],
-      $excludePackages: [String!]
-    ) {
-      searchTitles(
-        searchTitleString: $searchTitleString,
-        first: $first,
-        after: $after,
-        country: $country,
-        language: $language,
-        objectTypes: $objectTypes,
-        providers: $providers,
-        minReleaseYear: $minReleaseYear,
-        maxReleaseYear: $maxReleaseYear,
-        availableToPackages: $availableToPackages,
-        excludePackages: $excludePackages
-      ) {
-        edges {
-          cursor
-          node {
-            id
-            objectType
-            title
-            fullPath
-            originalReleaseYear
-            posterUrl
-            posterBlurryImageUrl
-            shortDescription
-            scoring {
-              imdbScore
-              tmdbScore
-            }
-            offers {
-              edges {
-                node {
-                  monetizationType
-                  presentationType
-                  retailPrice
-                  currency
-                  standardWebURL
-                  provider {
-                    id
-                    shortName
-                    clearName
-                  }
-                }
-              }
-            }
-          }
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-    }`;
-    const data = await this._request('GetSearchTitles', query, variables);
+    if (excludePackages) {
+      // JustWatch's current TitleFilter no longer accepts an exclude packages field.
+      // Keep accepting the option without sending unsupported GraphQL variables.
+    }
+    const data = await this._request('GetSearchTitles', SEARCH_QUERY, variables);
     // If the caller requested the raw data structure, return the
     // complete data object.  Otherwise return just the searchTitles
     // connection.
-    return raw ? data : data.searchTitles;
+    return raw ? data : normalizeConnection(data.popularTitles);
   }
 
   /**
@@ -236,6 +496,8 @@ class SimpleJustWatch {
       cursor = null,
       objectTypes = undefined,
       providers = undefined,
+      minReleaseYear = undefined,
+      maxReleaseYear = undefined,
       // Filter results by offers available through specific packages.
       packages: availableToPackages = undefined,
       // Exclude results that are available through specific packages.
@@ -252,66 +514,23 @@ class SimpleJustWatch {
       raw = false
     } = options;
     const variables = {
-      country,
-      language,
+      popularTitlesFilter: titleFilter({
+        providers,
+        packages: availableToPackages,
+        minReleaseYear,
+        maxReleaseYear,
+        objectTypes
+      }),
       first: count,
-      after: cursor,
-      objectTypes,
-      providers,
-      availableToPackages,
-      excludePackages,
+      offset: cursorToOffset(cursor),
       sortBy,
-      sortOrder
+      ...commonVariables(country, language, true)
     };
-    const query = `query GetPopularTitles(
-      $first: Int,
-      $after: String,
-      $country: Country!,
-      $language: Language,
-      $objectTypes: [ObjectTypeEnum!],
-      $providers: [StreamingProvider!],
-      $availableToPackages: [String!],
-      $excludePackages: [String!],
-      $sortBy: PopularSortBy!,
-      $sortOrder: SortOrder!
-    ) {
-      popularTitles(
-        first: $first,
-        after: $after,
-        country: $country,
-        language: $language,
-        objectTypes: $objectTypes,
-        providers: $providers,
-        availableToPackages: $availableToPackages,
-        excludePackages: $excludePackages,
-        sortBy: $sortBy,
-        sortOrder: $sortOrder
-      ) {
-        edges {
-          cursor
-          node {
-            id
-            objectType
-            title
-            fullPath
-            originalReleaseYear
-            posterUrl
-            posterBlurryImageUrl
-            shortDescription
-            scoring {
-              imdbScore
-              tmdbScore
-            }
-          }
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-    }`;
-    const data = await this._request('GetPopularTitles', query, variables);
-    return raw ? data : data.popularTitles;
+    if (excludePackages || sortOrder) {
+      // These legacy options are not accepted by the current public GraphQL schema.
+    }
+    const data = await this._request('GetPopularTitles', POPULAR_QUERY, variables);
+    return raw ? data : normalizeConnection(data.popularTitles);
   }
 
   /**
@@ -329,63 +548,13 @@ class SimpleJustWatch {
     if (!id) {
       throw new TypeError('An ID must be provided to fetch details');
     }
-    const { country = 'US', language = 'en' } = options;
-    const variables = { id: String(id), country, language };
-    const query = `query GetTitleDetails($id: ID!, $country: Country!, $language: Language) {
-      title(id: $id, country: $country, language: $language) {
-        id
-        objectType
-        title
-        fullPath
-        originalReleaseYear
-        runtime
-        shortDescription
-        fullDescription
-        posterUrl
-        posterBlurryImageUrl
-        productionCountries
-        genres {
-          edges {
-            node {
-              id
-              shortName
-              technicalName
-            }
-          }
-        }
-        scoring {
-          imdbScore
-          tmdbScore
-        }
-        offers {
-          edges {
-            node {
-              monetizationType
-              presentationType
-              retailPrice
-              currency
-              standardWebURL
-              provider {
-                id
-                shortName
-                clearName
-              }
-            }
-          }
-        }
-        seasons {
-          edges {
-            node {
-              id
-              title
-              seasonNumber
-            }
-          }
-        }
-      }
-    }`;
-    const data = await this._request('GetTitleDetails', query, variables);
-    return data.title;
+    const { country = 'US', language = 'en', bestOnly = true } = options;
+    const variables = {
+      nodeId: String(id),
+      ...commonVariables(country, language, bestOnly)
+    };
+    const data = await this._request('GetTitleNode', DETAILS_QUERY, variables);
+    return normalizeTitle(data.node);
   }
 
   /**
@@ -419,25 +588,7 @@ class SimpleJustWatch {
     if (!seasonId) {
       throw new TypeError('A season ID must be provided');
     }
-    const { country = 'US', language = 'en' } = options;
-    const variables = { id: String(seasonId), country, language };
-    const query = `query GetEpisodes($id: ID!, $country: Country!, $language: Language) {
-      season(id: $id, country: $country, language: $language) {
-        id
-        title
-        episodes {
-          edges {
-            node {
-              id
-              title
-              episodeNumber
-            }
-          }
-        }
-      }
-    }`;
-    const data = await this._request('GetEpisodes', query, variables);
-    const season = data.season;
+    const season = await this.details(seasonId, options);
     if (!season || !season.episodes) return [];
     return season.episodes.edges.map(e => e.node);
   }
@@ -481,26 +632,10 @@ class SimpleJustWatch {
    * @returns {Promise<object[]>} List of providers.
    */
   async providers(options = {}) {
-    const { country = 'US', language = 'en' } = options;
-    const variables = { country, language };
-    const query = `query GetProviders($country: Country!, $language: Language) {
-      popularProviders(country: $country, language: $language) {
-        edges {
-          node {
-            id
-            shortName
-            clearName
-            technicalName
-            displayName
-            priority
-          }
-        }
-      }
-    }`;
-    const data = await this._request('GetProviders', query, variables);
-    const providers = data.popularProviders;
-    if (!providers || !providers.edges) return [];
-    return providers.edges.map(e => e.node);
+    const { country = 'US' } = options;
+    const variables = { country: String(country).toUpperCase(), formatOfferIcon: 'PNG' };
+    const data = await this._request('GetProviders', PROVIDERS_QUERY, variables);
+    return (data.packages || []).map(normalizePackage);
   }
 
   /**
@@ -523,78 +658,11 @@ class SimpleJustWatch {
    * @returns {Promise<object>} Resolves with a connection object or full GraphQL data.
    */
   async newTitles(options = {}) {
-    const {
-      country = 'US',
-      language = 'en',
-      count = 20,
-      cursor = null,
-      objectTypes = undefined,
-      providers = undefined,
-      packages: availableToPackages = undefined,
-      excludePackages = undefined,
-      raw = false
-    } = options;
-    const variables = {
-      country,
-      language,
-      first: count,
-      after: cursor,
-      objectTypes,
-      providers,
-      availableToPackages,
-      excludePackages,
+    return this.popular({
+      ...options,
       sortBy: 'RELEASE_YEAR',
       sortOrder: 'DESC'
-    };
-    const query = `query GetNewTitles(
-      $first: Int,
-      $after: String,
-      $country: Country!,
-      $language: Language,
-      $objectTypes: [ObjectTypeEnum!],
-      $providers: [StreamingProvider!],
-      $availableToPackages: [String!],
-      $excludePackages: [String!],
-      $sortBy: PopularSortBy!,
-      $sortOrder: SortOrder!
-    ) {
-      popularTitles(
-        first: $first,
-        after: $after,
-        country: $country,
-        language: $language,
-        objectTypes: $objectTypes,
-        providers: $providers,
-        availableToPackages: $availableToPackages,
-        excludePackages: $excludePackages,
-        sortBy: $sortBy,
-        sortOrder: $sortOrder
-      ) {
-        edges {
-          cursor
-          node {
-            id
-            objectType
-            title
-            fullPath
-            originalReleaseYear
-            posterUrl
-            posterBlurryImageUrl
-            shortDescription
-            scoring {
-              imdbScore
-              tmdbScore
-            }
-          }
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-    }`;
-    const data = await this._request('GetNewTitles', query, variables);
-    return raw ? data : data.popularTitles;
+    });
   }
 
   /**

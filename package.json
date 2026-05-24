@@ -1,6 +1,6 @@
 {
   "name": "simple-justwatch-js",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Unofficial JavaScript and TypeScript client for the public JustWatch GraphQL API.",
   "main": "index.js",
   "types": "index.d.ts",
@@ -19,7 +19,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node -e \"const { SimpleJustWatch } = require('./'); const client = new SimpleJustWatch({ fetch: async () => ({ json: async () => ({ data: { providers: [] } }) }) }); if (!client || typeof client.search !== 'function') process.exit(1);\""
+    "test": "node -e \"const { SimpleJustWatch } = require('./'); const client = new SimpleJustWatch({ fetch: async () => ({ json: async () => ({ data: { providers: [] } }) }) }); if (!client || typeof client.search !== 'function') process.exit(1);\"",
+    "test:live": "node -e \"const { SimpleJustWatch } = require('./'); (async () => { const jw = new SimpleJustWatch(); const search = await jw.search('The Matrix', { count: 1, objectTypes: ['MOVIE'] }); if (!search.edges?.[0]?.node?.title) throw new Error('search failed'); const details = await jw.details(search.edges[0].node.id); if (!details?.title) throw new Error('details failed'); const providers = await jw.providers(); if (!providers.length) throw new Error('providers failed'); })();\""
   },
   "keywords": [
     "justwatch",

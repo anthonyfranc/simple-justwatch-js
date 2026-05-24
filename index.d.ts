@@ -33,12 +33,15 @@ declare module 'simple-justwatch-js' {
 
   /** Offer information describing monetization options for a title. */
   export interface Offer {
+    id?: string;
     monetizationType?: string;
     presentationType?: string;
-    retailPrice?: number | null;
+    retailPrice?: string | null;
+    retailPriceValue?: number | null;
     currency?: string | null;
     standardWebURL?: string | null;
     provider?: Provider;
+    package?: Provider;
   }
 
   /** Streaming provider metadata. */
@@ -48,6 +51,11 @@ declare module 'simple-justwatch-js' {
     clearName?: string;
     technicalName?: string;
     displayName?: string;
+    packageId?: number;
+    slug?: string;
+    monetizationTypes?: string[];
+    icon?: string | null;
+    iconUrl?: string | null;
     priority?: number;
   }
 
@@ -66,13 +74,18 @@ declare module 'simple-justwatch-js' {
   /** Search result object for a title. */
   export interface SearchResult {
     id?: string;
+    objectId?: number;
     objectType?: string;
     title?: string;
     fullPath?: string;
+    url?: string | null;
     originalReleaseYear?: number | null;
+    originalReleaseDate?: string | null;
     posterUrl?: string | null;
+    posterFullUrl?: string | null;
     posterBlurryImageUrl?: string | null;
     shortDescription?: string | null;
+    ageCertification?: string | null;
     scoring?: Scoring;
     offers?: { edges?: Array<Edge<Offer>> };
   }
@@ -102,14 +115,18 @@ declare module 'simple-justwatch-js' {
   /** Details about a title (movie or show). */
   export interface DetailsResult {
     id?: string;
+    objectId?: number;
     objectType?: string;
     title?: string;
     fullPath?: string;
+    url?: string | null;
     originalReleaseYear?: number | null;
+    originalReleaseDate?: string | null;
     runtime?: number | null;
     shortDescription?: string | null;
     fullDescription?: string | null;
     posterUrl?: string | null;
+    posterFullUrl?: string | null;
     posterBlurryImageUrl?: string | null;
     productionCountries?: string[];
     genres?: { edges?: Array<Edge<Genre>> };
@@ -121,6 +138,8 @@ declare module 'simple-justwatch-js' {
   /** Season information for a show. */
   export interface Season {
     id?: string;
+    objectId?: number;
+    objectType?: string;
     title?: string;
     seasonNumber?: number | null;
   }
@@ -128,8 +147,12 @@ declare module 'simple-justwatch-js' {
   /** Episode information for a season. */
   export interface Episode {
     id?: string;
+    objectId?: number;
+    objectType?: string;
     title?: string;
+    seasonNumber?: number | null;
     episodeNumber?: number | null;
+    offers?: { edges?: Array<Edge<Offer>> };
   }
 
   /** Search options passed to the `search` method. */
@@ -144,7 +167,7 @@ declare module 'simple-justwatch-js' {
     maxReleaseYear?: number;
     /** Only include titles available to the specified packages. */
     packages?: string[];
-    /** Exclude titles that are available via the specified packages. */
+    /** Deprecated: ignored because JustWatch's current GraphQL schema no longer accepts this filter. */
     excludePackages?: string[];
     /** When true, return the raw GraphQL data instead of just the connection. */
     raw?: boolean;
@@ -158,9 +181,11 @@ declare module 'simple-justwatch-js' {
     cursor?: string | null;
     objectTypes?: string[];
     providers?: string[];
+    minReleaseYear?: number;
+    maxReleaseYear?: number;
     /** Only include titles available to the specified packages. */
     packages?: string[];
-    /** Exclude titles that are available via the specified packages. */
+    /** Deprecated: ignored because JustWatch's current GraphQL schema no longer accepts this filter. */
     excludePackages?: string[];
     /**
      * Sort results by the given criterion.  Valid values include
@@ -168,10 +193,7 @@ declare module 'simple-justwatch-js' {
      * 'RELEASE_YEAR' and 'ALPHABETICAL'.  Defaults to 'POPULAR'.
      */
     sortBy?: string;
-    /**
-     * Order of sorting.  Use 'ASC' for ascending or 'DESC' for
-     * descending order.  Defaults to 'DESC'.
-     */
+    /** Deprecated: ignored because JustWatch's current GraphQL schema sorts by the selected criterion. */
     sortOrder?: string;
     /** When true, return the raw GraphQL data instead of just the connection. */
     raw?: boolean;
@@ -186,6 +208,7 @@ declare module 'simple-justwatch-js' {
     language?: string;
     objectTypes?: string[];
     packages?: string[];
+    /** Deprecated: ignored because JustWatch's current GraphQL schema no longer accepts this filter. */
     excludePackages?: string[];
     /** Maximum number of titles to fetch.  Defaults to 2000. */
     maxCount?: number;
@@ -195,12 +218,13 @@ declare module 'simple-justwatch-js' {
   export interface DetailsOptions {
     country?: string;
     language?: string;
+    /** Return only the best offer per provider. Defaults to true. */
+    bestOnly?: boolean;
   }
 
   /** Options passed to the `providers` method. */
   export interface ProvidersOptions {
     country?: string;
-    language?: string;
   }
 
   /**
@@ -223,20 +247,20 @@ declare module 'simple-justwatch-js' {
     /**
      * Fetch detailed information about a title by its ID.
      */
-    details(id: number | string, options?: DetailsOptions): Promise<DetailsResult>;
+    details(id: string, options?: DetailsOptions): Promise<DetailsResult>;
     /**
      * Retrieve all seasons for a given show ID.
      */
-    seasons(showId: number | string, options?: DetailsOptions): Promise<Season[]>;
+    seasons(showId: string, options?: DetailsOptions): Promise<Season[]>;
     /**
      * Retrieve all episodes for a given season ID.
      */
-    episodes(seasonId: number | string, options?: DetailsOptions): Promise<Episode[]>;
+    episodes(seasonId: string, options?: DetailsOptions): Promise<Episode[]>;
     /**
      * Get offers for a title across multiple countries.  Returns an
      * object keyed by country code.
      */
-    offersForCountries(titleId: number | string, countries: string[], options?: { language?: string }): Promise<Record<string, Offer[]>>;
+    offersForCountries(titleId: string, countries: string[], options?: { language?: string }): Promise<Record<string, Offer[]>>;
     /**
      * Fetch all streaming providers available in a given country.
      */

@@ -6,7 +6,7 @@
 
 ## Installation
 
-Install the package using npm or yarn (once published):
+Install the package using npm or yarn:
 
 ```bash
 npm install simple-justwatch-js
@@ -41,16 +41,17 @@ for (const edge of searchResults.edges) {
 // Fetch popular titles.  Pagination works the same as search.
 const popular = await jw.popular({ country: 'US', language: 'en', count: 10 });
 
-// Get detailed information about a title by its JustWatch ID.
-const details = await jw.details(28951, { country: 'US', language: 'en' });
+// Get detailed information about a title by its current JustWatch node ID.
+// Search and popular results expose this value as `node.id` (for example: tm10).
+const details = await jw.details('tm10', { country: 'US', language: 'en' });
 console.log(details.title, details.offers.edges.length);
 
 // List seasons of a show and fetch episodes of a season.
-const seasons = await jw.seasons(389, { country: 'US' });
+const seasons = await jw.seasons('ts389', { country: 'US' });
 const episodes = await jw.episodes(seasons[0].id, { country: 'US' });
 
 // Get offers for a title across multiple countries.
-const offersByCountry = await jw.offersForCountries(28951, ['US', 'GB'], { language: 'en' });
+const offersByCountry = await jw.offersForCountries('tm10', ['US', 'GB'], { language: 'en' });
 console.log(offersByCountry.US);
 
 // List available providers in a country.
@@ -85,7 +86,7 @@ Search for titles matching `title`.  `SearchOptions` may include:
 | `minReleaseYear`    | `number`        | Filter results by minimum release year.  Optional.                                                                                              |
 | `maxReleaseYear`    | `number`        | Filter results by maximum release year.  Optional.                                                                                              |
 | `packages`          | `string[]`      | Only include titles available via the specified packages.  Optional.                                                                            |
-| `excludePackages`   | `string[]`      | Exclude titles that are available via the specified packages.  Optional.                                                                        |
+| `excludePackages`   | `string[]`      | Deprecated: JustWatch’s current public GraphQL schema no longer accepts this filter, so it is ignored.                                         |
 | `raw`               | `boolean`       | When `true`, return the raw GraphQL data instead of just the connection.  Optional.                                                             |
 
 Returns a connection object with `edges` (an array of search results) and `pageInfo` for pagination.
@@ -102,36 +103,36 @@ Retrieve currently popular titles.  `PopularOptions` accepts many of the same pr
 | `objectTypes`     | `string[]`    | Filter results by object type (e.g. `['MOVIE','SHOW']`).  Optional.                                                                                           |
 | `providers`       | `string[]`    | Filter results by provider IDs.  Optional.                                                                                                                    |
 | `packages`        | `string[]`    | Only include titles available via the specified packages.  Optional.                                                                                        |
-| `excludePackages` | `string[]`    | Exclude titles available via the specified packages.  Optional.                                                                                                |
+| `excludePackages` | `string[]`    | Deprecated: JustWatch’s current public GraphQL schema no longer accepts this filter, so it is ignored.                                                       |
 | `sortBy`          | `string`      | Criteria for sorting.  Valid values include `'POPULAR'`, `'TRENDING'`, `'IMDB_SCORE'`, `'TMDB_POPULARITY'`, `'RELEASE_YEAR'` and `'ALPHABETICAL'`.  Defaults to `'POPULAR'`. |
-| `sortOrder`       | `string`      | Sort order: `'ASC'` or `'DESC'`.  Defaults to `'DESC'`.                                                                                                       |
+| `sortOrder`       | `string`      | Deprecated: JustWatch’s current public GraphQL schema no longer accepts this option, so it is ignored.                                                         |
 | `raw`             | `boolean`     | When `true`, return the raw GraphQL data instead of just the connection.  Optional.                                                                             |
 
 The returned value is a connection object containing `edges` (popular results) and `pageInfo` for pagination.
 
-### `details(id: number|string, options?: DetailsOptions): Promise<DetailsResult>`
+### `details(id: string, options?: DetailsOptions): Promise<DetailsResult>`
 
-Fetch detailed information about a title by its JustWatch ID.  Includes offers, scoring data and seasons for shows.  `DetailsOptions` can specify `country` and `language` (both default to `US` and `en`).
+Fetch detailed information about a title by its current JustWatch node ID (for example `tm10` for a movie or `ts389` for a show).  Includes offers, scoring data and seasons for shows.  `DetailsOptions` can specify `country` and `language` (both default to `US` and `en`). Numeric legacy IDs are no longer accepted by JustWatch’s public GraphQL endpoint.
 
-### `seasons(showId: number|string, options?: DetailsOptions): Promise<Season[]>`
+### `seasons(showId: string, options?: DetailsOptions): Promise<Season[]>`
 
 Convenience wrapper around `details()` that extracts the season list for a show.  If the ID refers to a movie, an empty array is returned.
 
-### `episodes(seasonId: number|string, options?: DetailsOptions): Promise<Episode[]>`
+### `episodes(seasonId: string, options?: DetailsOptions): Promise<Episode[]>`
 
 Fetch all episodes for a given season.
 
-### `offersForCountries(titleId: number|string, countries: string[], options?: { language?: string }): Promise<Record<string, Offer[]>>`
+### `offersForCountries(titleId: string, countries: string[], options?: { language?: string }): Promise<Record<string, Offer[]>>`
 
 Retrieve offers for a title across multiple countries.  Internally this method calls `details()` once per country and extracts the offers.  The result is an object keyed by country code.
 
 ### `providers(options?: ProvidersOptions): Promise<Provider[]>`
 
-Fetch a list of streaming providers available in a given country.  `ProvidersOptions` can specify `country` and `language`.
+Fetch a list of streaming providers available in a given country.  `ProvidersOptions` can specify `country`.
 
 ### `newTitles(options?: NewTitlesOptions): Promise<PopularResultConnection>`
 
-Fetch the newest titles by release year.  This helper wraps the `popularTitles` query with `sortBy: 'RELEASE_YEAR'` and `sortOrder: 'DESC'` and accepts all the same options as `popular()` (such as `country`, `language`, `objectTypes`, `providers`, `packages`, `excludePackages`, `count`, `cursor` and `raw`).  It returns a paginated connection or, when `raw` is `true`, the full GraphQL response.
+Fetch the newest titles by release year.  This helper wraps the `popularTitles` query with `sortBy: 'RELEASE_YEAR'` and accepts all the same options as `popular()` (such as `country`, `language`, `objectTypes`, `providers`, `packages`, `count`, `cursor` and `raw`).  It returns a paginated connection or, when `raw` is `true`, the full GraphQL response.
 
 ```js
 // Example: get the latest 10 movies released on Netflix in the US
@@ -146,7 +147,7 @@ const newest = await jw.newTitles({
 
 ### `titlesByProvider(providerId: string, options?: TitlesByProviderOptions): Promise<PopularResult[]>`
 
-Retrieve all titles offered by a specific streaming provider.  This helper repeatedly calls `popular()` with the given provider ID until all pages have been fetched or a maximum number of titles (`maxCount`, default: `2000`) has been reached.  The `options` object accepts `country`, `language`, `objectTypes`, `packages`, `excludePackages` and `maxCount`.  It returns an array of title nodes.
+Retrieve all titles offered by a specific streaming provider.  This helper repeatedly calls `popular()` with the given provider ID until all pages have been fetched or a maximum number of titles (`maxCount`, default: `2000`) has been reached.  The `options` object accepts `country`, `language`, `objectTypes`, `packages` and `maxCount`.  It returns an array of title nodes.
 
 ```js
 // Example: fetch up to 500 titles available on HBO in the US
