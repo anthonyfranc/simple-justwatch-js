@@ -80,7 +80,7 @@ Search for titles matching `title`.  `SearchOptions` may include:
 | `country`           | `string`        | Two‑letter country code (e.g. `US`).  Defaults to `US`.                                                                                          |
 | `language`          | `string`        | ISO 639‑1 language code (e.g. `en`).  Defaults to `en`.                                                                                          |
 | `count`             | `number`        | Number of results to return per request.  Defaults to `20`.                                                                                      |
-| `cursor`            | `string|null`   | Cursor for pagination.  Pass the `endCursor` from a previous response to fetch the next page.                                                     |
+| `cursor`            | `string|number|null` | Cursor or numeric offset for pagination.  JustWatch currently uses offset-based pagination, so base64 numeric cursors are decoded to offsets. |
 | `objectTypes`       | `string[]`      | Filter results by object type (e.g. `['MOVIE','SHOW']`).  Optional.                                                                             |
 | `providers`         | `string[]`      | Filter results by provider IDs (e.g. `['nfx','apv']`).  Optional.                                                                               |
 | `minReleaseYear`    | `number`        | Filter results by minimum release year.  Optional.                                                                                              |
@@ -99,7 +99,7 @@ Retrieve currently popular titles.  `PopularOptions` accepts many of the same pr
 | `country`         | `string`      | Two‑letter country code (e.g. `US`).  Defaults to `US`.                                                                                                        |
 | `language`        | `string`      | ISO 639‑1 language code (e.g. `en`).  Defaults to `en`.                                                                                                        |
 | `count`           | `number`      | Number of results to return per request.  Defaults to `20`.                                                                                                    |
-| `cursor`          | `string|null` | Cursor for pagination.  Pass the `endCursor` from a previous response to fetch the next page.                                                                  |
+| `cursor`          | `string|number|null` | Cursor or numeric offset for pagination.  JustWatch currently uses offset-based pagination, so base64 numeric cursors are decoded to offsets.              |
 | `objectTypes`     | `string[]`    | Filter results by object type (e.g. `['MOVIE','SHOW']`).  Optional.                                                                                           |
 | `providers`       | `string[]`    | Filter results by provider IDs.  Optional.                                                                                                                    |
 | `packages`        | `string[]`    | Only include titles available via the specified packages.  Optional.                                                                                        |
@@ -160,6 +160,16 @@ console.log(hboTitles.length);
 - **Unofficial API:** This library uses JustWatch’s publicly exposed GraphQL endpoint, which is not officially documented.  The schema may change without notice.  When in doubt, inspect network requests from the JustWatch web app to adjust the queries.
 - **Rate Limits:** There are no published rate limits for the GraphQL endpoint, but excessive usage could lead to throttling or blocking.  Respect the service and cache results whenever possible.
 - **Missing Data:** Not all providers expose pricing information through JustWatch.  Some fields may be `null` or omitted.
+
+## Development
+
+```bash
+npm test          # offline mocked regression tests
+npm run check     # syntax check plus offline tests
+npm run test:live # live JustWatch smoke/regression test
+```
+
+Live tests call the public JustWatch endpoint and are intentionally not run by CI.
 
 ## License
 

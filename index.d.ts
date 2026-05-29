@@ -31,6 +31,14 @@ declare module 'simple-justwatch-js' {
     endCursor?: string | null;
   }
 
+  /** Error thrown for HTTP, JSON parsing, and GraphQL response failures. */
+  export interface JustWatchRequestError extends Error {
+    operationName?: string;
+    status?: number;
+    responseText?: string;
+    errors?: unknown[];
+  }
+
   /** Offer information describing monetization options for a title. */
   export interface Offer {
     id?: string;
@@ -38,8 +46,16 @@ declare module 'simple-justwatch-js' {
     presentationType?: string;
     retailPrice?: string | null;
     retailPriceValue?: number | null;
+    lastChangeRetailPriceValue?: number | null;
     currency?: string | null;
+    type?: string;
     standardWebURL?: string | null;
+    elementCount?: number;
+    availableTo?: string | null;
+    subtitleLanguages?: string[];
+    videoTechnology?: string[];
+    audioTechnology?: string[];
+    audioLanguages?: string[];
     provider?: Provider;
     package?: Provider;
   }
@@ -62,7 +78,12 @@ declare module 'simple-justwatch-js' {
   /** Scoring information (IMDb, TMDb, etc.). */
   export interface Scoring {
     imdbScore?: number | null;
+    imdbVotes?: number | null;
+    tmdbPopularity?: number | null;
     tmdbScore?: number | null;
+    tomatoMeter?: number | null;
+    certifiedFresh?: boolean | null;
+    jwRating?: number | null;
   }
 
   /** Generic edge wrapper used by GraphQL connections. */
@@ -86,6 +107,9 @@ declare module 'simple-justwatch-js' {
     posterBlurryImageUrl?: string | null;
     shortDescription?: string | null;
     ageCertification?: string | null;
+    backdrops?: Array<{ backdropUrl?: string | null; backdropFullUrl?: string | null }>;
+    externalIds?: { imdbId?: string | null; tmdbId?: string | null };
+    genres?: { edges?: Array<Edge<Genre>> };
     scoring?: Scoring;
     offers?: { edges?: Array<Edge<Offer>> };
   }
@@ -124,15 +148,18 @@ declare module 'simple-justwatch-js' {
     originalReleaseDate?: string | null;
     runtime?: number | null;
     shortDescription?: string | null;
-    fullDescription?: string | null;
     posterUrl?: string | null;
     posterFullUrl?: string | null;
     posterBlurryImageUrl?: string | null;
-    productionCountries?: string[];
+    backdrops?: Array<{ backdropUrl?: string | null; backdropFullUrl?: string | null }>;
+    externalIds?: { imdbId?: string | null; tmdbId?: string | null };
     genres?: { edges?: Array<Edge<Genre>> };
     scoring?: Scoring;
     offers?: { edges?: Array<Edge<Offer>> };
     seasons?: { edges?: Array<Edge<Season>> };
+    episodes?: { edges?: Array<Edge<Episode>> };
+    seasonNumber?: number | null;
+    episodeNumber?: number | null;
   }
 
   /** Season information for a show. */
@@ -160,7 +187,8 @@ declare module 'simple-justwatch-js' {
     country?: string;
     language?: string;
     count?: number;
-    cursor?: string | null;
+    /** Base64 numeric cursor from pageInfo.endCursor, a numeric string, or a numeric offset. */
+    cursor?: string | number | null;
     objectTypes?: string[];
     providers?: string[];
     minReleaseYear?: number;
@@ -178,7 +206,8 @@ declare module 'simple-justwatch-js' {
     country?: string;
     language?: string;
     count?: number;
-    cursor?: string | null;
+    /** Base64 numeric cursor from pageInfo.endCursor, a numeric string, or a numeric offset. */
+    cursor?: string | number | null;
     objectTypes?: string[];
     providers?: string[];
     minReleaseYear?: number;
@@ -222,6 +251,13 @@ declare module 'simple-justwatch-js' {
     bestOnly?: boolean;
   }
 
+  /** Options passed to `offersForCountries`. */
+  export interface OffersForCountriesOptions {
+    language?: string;
+    /** Return only the best offer per provider. Defaults to true. */
+    bestOnly?: boolean;
+  }
+
   /** Options passed to the `providers` method. */
   export interface ProvidersOptions {
     country?: string;
@@ -260,7 +296,7 @@ declare module 'simple-justwatch-js' {
      * Get offers for a title across multiple countries.  Returns an
      * object keyed by country code.
      */
-    offersForCountries(titleId: string, countries: string[], options?: { language?: string }): Promise<Record<string, Offer[]>>;
+    offersForCountries(titleId: string, countries: string[], options?: OffersForCountriesOptions): Promise<Record<string, Offer[]>>;
     /**
      * Fetch all streaming providers available in a given country.
      */

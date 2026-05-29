@@ -256,6 +256,12 @@ function commonVariables(country, language, bestOnly) {
   };
 }
 
+function validateNodeId(id, label) {
+  if (typeof id !== 'string' || id.trim() === '') {
+    throw new TypeError(`${label} must be a non-empty JustWatch node ID string`);
+  }
+}
+
 function titleFilter({ title, providers, packages, minReleaseYear, maxReleaseYear, objectTypes }) {
   const selectedPackages = providers || packages;
   return {
@@ -405,9 +411,37 @@ class SimpleJustWatch {
       headers: this.headers,
       body: JSON.stringify(body)
     });
-    const json = await response.json();
+    const status = response && typeof response.status === 'number' ? response.status : undefined;
+    let responseText = '';
+    let json;
+    try {
+      if (response && typeof response.text === 'function') {
+        responseText = await response.text();
+        json = responseText ? JSON.parse(responseText) : {};
+      } else {
+        json = await response.json();
+      }
+    } catch (ex) {
+      const error = new Error('GraphQL request failed');
+      error.operationName = operationName;
+      error.status = status;
+      error.responseText = responseText;
+      error.cause = ex;
+      throw error;
+    }
+    if (response && response.ok === false) {
+      const error = new Error('GraphQL request failed');
+      error.operationName = operationName;
+      error.status = status;
+      error.responseText = responseText;
+      error.errors = json && json.errors;
+      throw error;
+    }
     if (json.errors) {
       const error = new Error('GraphQL request failed');
+      error.operationName = operationName;
+      error.status = status;
+      error.responseText = responseText;
       error.errors = json.errors;
       throw error;
     }
@@ -415,15 +449,16 @@ class SimpleJustWatch {
   }
 
   /**
-   * Search for titles.  This function queries the JustWatch
-   * `searchTitles` connection and returns a paginated result set.
+   * Search for titles.  This function calls the current JustWatch
+   * `popularTitles` field with a search filter and returns a paginated
+   * result set.
    *
    * @param {string} title The search string.
    * @param {object} [options]
    * @param {string} [options.country='US'] Two‑letter country code (ISO 3166‑1 alpha‑2).  For example, 'US'.
    * @param {string} [options.language='en'] Language code (ISO 639‑1).  For example, 'en'.
    * @param {number} [options.count=20] Number of entries to request.  The API may cap this value.
-   * @param {string|null} [options.cursor=null] Cursor for pagination.  Pass the `endCursor` from a previous response to fetch the next page.
+   * @param {string|number|null} [options.cursor=null] Cursor or numeric offset for pagination.  Current JustWatch pagination is offset-based, so base64 numeric cursors are decoded to offsets.
    * @param {string[]} [options.objectTypes] Limit the search to specific object types (e.g. ['MOVIE','SHOW']).
    * @param {string[]} [options.providers] Limit results to specific provider IDs (e.g. ['nfx','apv']).  Leave undefined to search all providers.
    * @param {number} [options.minReleaseYear] Minimum release year filter.
@@ -448,7 +483,7 @@ class SimpleJustWatch {
       // Exclude results that are available through specific packages.
       excludePackages = undefined,
       // If true, return the raw GraphQL data instead of just the
-      // searchTitles connection.  Useful when you need to inspect
+      // popularTitles connection.  Useful when you need to inspect
       // the complete JSON structure.
       raw = false
     } = options;
@@ -465,13 +500,10 @@ class SimpleJustWatch {
       offset: cursorToOffset(cursor),
       ...commonVariables(country, language, true)
     };
-    if (excludePackages) {
-      // JustWatch's current TitleFilter no longer accepts an exclude packages field.
-      // Keep accepting the option without sending unsupported GraphQL variables.
-    }
+    void excludePackages;
     const data = await this._request('GetSearchTitles', SEARCH_QUERY, variables);
     // If the caller requested the raw data structure, return the
-    // complete data object.  Otherwise return just the searchTitles
+    // complete data object.  Otherwise return just the popularTitles
     // connection.
     return raw ? data : normalizeConnection(data.popularTitles);
   }
@@ -483,7 +515,7 @@ class SimpleJustWatch {
    * @param {string} [options.country='US'] Two‑letter country code.
    * @param {string} [options.language='en'] Language code.
    * @param {number} [options.count=20] Number of results to return.
-   * @param {string|null} [options.cursor=null] Cursor for pagination.
+   * @param {string|number|null} [options.cursor=null] Cursor or numeric offset for pagination.  Current JustWatch pagination is offset-based, so base64 numeric cursors are decoded to offsets.
    * @param {string[]} [options.objectTypes] Limit results to specific object types.
    * @param {string[]} [options.providers] Limit results to specific providers.
    * @returns {Promise<object>} Resolves with a connection object containing `edges` and `pageInfo`.
@@ -507,7 +539,8 @@ class SimpleJustWatch {
       // 'TMDB_POPULARITY', 'RELEASE_YEAR' and 'ALPHABETICAL'.  The
       // default is 'POPULAR'.
       sortBy = 'POPULAR',
-      // Sort order, either 'ASC' or 'DESC'.  The default is 'DESC'.
+      // Deprecated no-op kept for backward compatibility. The current
+      // public schema sorts by the selected criterion.
       sortOrder = 'DESC',
       // If true, return the raw GraphQL data instead of just the
       // popularTitles connection.
@@ -526,31 +559,28 @@ class SimpleJustWatch {
       sortBy,
       ...commonVariables(country, language, true)
     };
-    if (excludePackages || sortOrder) {
-      // These legacy options are not accepted by the current public GraphQL schema.
-    }
+    void excludePackages;
+    void sortOrder;
     const data = await this._request('GetPopularTitles', POPULAR_QUERY, variables);
     return raw ? data : normalizeConnection(data.popularTitles);
   }
 
   /**
-   * Fetch detailed information about a title by its JustWatch ID.  The
+   * Fetch detailed information about a title by its JustWatch node ID.  The
    * returned data includes offers, scoring information and seasons for
-   * shows.  Note that JustWatch IDs are integers.
+   * shows. Current node IDs are strings like `tm10` and `ts389`.
    *
-   * @param {number|string} id The JustWatch title ID.
+   * @param {string} id The JustWatch title node ID.
    * @param {object} [options]
    * @param {string} [options.country='US'] Two‑letter country code.
    * @param {string} [options.language='en'] Language code.
    * @returns {Promise<object>} Resolves with the title object.
    */
   async details(id, options = {}) {
-    if (!id) {
-      throw new TypeError('An ID must be provided to fetch details');
-    }
+    validateNodeId(id, 'Title ID');
     const { country = 'US', language = 'en', bestOnly = true } = options;
     const variables = {
-      nodeId: String(id),
+      nodeId: id,
       ...commonVariables(country, language, bestOnly)
     };
     const data = await this._request('GetTitleNode', DETAILS_QUERY, variables);
@@ -559,35 +589,33 @@ class SimpleJustWatch {
 
   /**
    * Retrieve all seasons for a given show.  This is a convenience
-   * wrapper around the `title` query; if the provided ID refers to
+   * wrapper around the node details query; if the provided ID refers to
    * a movie, an empty array is returned.
    *
-   * @param {number|string} showId The JustWatch ID of the show.
+   * @param {string} showId The JustWatch show node ID.
    * @param {object} [options]
    * @param {string} [options.country='US'] Two‑letter country code.
    * @param {string} [options.language='en'] Language code.
    * @returns {Promise<object[]>} List of season objects with id, title and seasonNumber.
    */
   async seasons(showId, options = {}) {
+    validateNodeId(showId, 'Show ID');
     const details = await this.details(showId, options);
     if (!details || !details.seasons) return [];
     return details.seasons.edges.map(e => e.node);
   }
 
   /**
-   * Retrieve all episodes for a given season.  Queries the `season` type
-   * directly.
+   * Retrieve all episodes for a given season.
    *
-   * @param {number|string} seasonId The ID of the season.
+   * @param {string} seasonId The JustWatch season node ID.
    * @param {object} [options]
    * @param {string} [options.country='US'] Two‑letter country code.
    * @param {string} [options.language='en'] Language code.
    * @returns {Promise<object[]>} List of episodes with id, title and episodeNumber.
    */
   async episodes(seasonId, options = {}) {
-    if (!seasonId) {
-      throw new TypeError('A season ID must be provided');
-    }
+    validateNodeId(seasonId, 'Season ID');
     const season = await this.details(seasonId, options);
     if (!season || !season.episodes) return [];
     return season.episodes.edges.map(e => e.node);
@@ -599,7 +627,7 @@ class SimpleJustWatch {
    * this helper issues multiple requests internally and aggregates
    * results keyed by country code.
    *
-   * @param {number|string} titleId The title ID.
+   * @param {string} titleId The JustWatch title node ID.
    * @param {string[]} countries An array of two‑letter country codes.
    * @param {object} [options]
    * @param {string} [options.language='en'] Language code.
@@ -607,15 +635,17 @@ class SimpleJustWatch {
    *   its list of offers.
    */
   async offersForCountries(titleId, countries, options = {}) {
-    if (!titleId) {
-      throw new TypeError('A title ID must be provided');
-    }
+    validateNodeId(titleId, 'Title ID');
     if (!Array.isArray(countries) || countries.length === 0) {
       throw new TypeError('You must provide an array of country codes');
     }
     const results = {};
     for (const country of countries) {
-      const details = await this.details(titleId, { country, language: options.language });
+      const details = await this.details(titleId, {
+        country,
+        language: options.language,
+        bestOnly: options.bestOnly
+      });
       results[country] = details && details.offers ? details.offers.edges.map(e => e.node) : [];
     }
     return results;
@@ -623,12 +653,11 @@ class SimpleJustWatch {
 
   /**
    * Fetch all streaming providers available in a given country.  This
-   * wraps the `popularProviders` connection.  Providers include
+   * wraps the current JustWatch `packages` field. Providers include
    * metadata such as their ID, shortName and clearName.
    *
    * @param {object} [options]
    * @param {string} [options.country='US'] Two‑letter country code.
-   * @param {string} [options.language='en'] Language code.
    * @returns {Promise<object[]>} List of providers.
    */
   async providers(options = {}) {
@@ -640,7 +669,7 @@ class SimpleJustWatch {
 
   /**
    * Fetch the newest titles by release year.  This function sorts the
-   * popular titles list by `RELEASE_YEAR` (descending) and supports
+   * popular titles list by `RELEASE_YEAR` and supports
    * the same filtering options as {@link popular}.  It returns a
    * connection object or the raw GraphQL data when `options.raw` is
    * truthy.
@@ -649,11 +678,11 @@ class SimpleJustWatch {
    * @param {string} [options.country='US'] Two‑letter country code.
    * @param {string} [options.language='en'] Language code.
    * @param {number} [options.count=20] Number of results to return.
-   * @param {string|null} [options.cursor=null] Cursor for pagination.
+   * @param {string|number|null} [options.cursor=null] Cursor or numeric offset for pagination.
    * @param {string[]} [options.objectTypes] Limit results to specific object types.
    * @param {string[]} [options.providers] Limit results to specific providers.
    * @param {string[]} [options.packages] Only include titles that are available to the given packages (similar to providers).
-   * @param {string[]} [options.excludePackages] Exclude titles that are available via the given packages.
+   * @param {string[]} [options.excludePackages] Deprecated no-op retained for compatibility.
    * @param {boolean} [options.raw=false] When true, return the raw GraphQL data instead of just the connection.
    * @returns {Promise<object>} Resolves with a connection object or full GraphQL data.
    */
@@ -679,7 +708,7 @@ class SimpleJustWatch {
    * @param {string} [options.language='en'] Language code.
    * @param {string[]} [options.objectTypes] Limit results to specific object types.
    * @param {string[]} [options.packages] Only include titles available to the given packages.
-   * @param {string[]} [options.excludePackages] Exclude titles available via given packages.
+   * @param {string[]} [options.excludePackages] Deprecated no-op retained for compatibility.
    * @param {number} [options.maxCount=2000] Maximum number of titles to fetch.
    * @returns {Promise<object[]>} Array of title nodes.
    */
